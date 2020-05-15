@@ -1,4 +1,5 @@
 #! /usr/bin/python3
+import argparse
 from sys import argv
 from smtplib import SMTP
 from os.path import basename
@@ -15,8 +16,17 @@ from email.utils import formatdate
     - https://github.com/mez-0
 '''
 
-smtp_server = "smtp.office365.com"
-smtp_port = 587
+def get_args():
+    parser = argparse.ArgumentParser(description="Fish.")
+    parser.add_argument("-u", "--sender-address", metavar="", required=True, help="Username to authenticate with (Office)")
+    parser.add_argument("-p", "--sender-password", metavar="", help="Password to authenticate with (Office)")
+    parser.add_argument("-t", "--target-address", metavar="", required=True, help="Victim Email Address")
+    parser.add_argument("-a", "--attachment", metavar="", required=True, help="Attachment to send")
+    parser.add_argument("-e", "--html-email", metavar="", required=True, help="HTML Body for Email")
+    parser.add_argument("--smtp-server", metavar="", default="smtp.office365.com", type=str, help="SMTP Server Address")
+    parser.add_argument("--smtp-port", metavar="", default=587, type=int, help="SMTP Server Port")
+    args = parser.parse_args()
+    return args    
 
 def get_html(filename):
     # https://beefree.io/templates/
@@ -28,7 +38,7 @@ def get_html(filename):
         print(f'[!] Unable to open {filename}: ' + e)
         quit()
 
-def send_message(sender_email, sender_password, target_email, email_html, attachment_file):
+def build_email(sender_email, target_email, email_html, attachment_file):
     html = get_html(email_html)
     msg = MIMEMultipart()
     msg['From'] = sender_email
@@ -51,40 +61,46 @@ def send_message(sender_email, sender_password, target_email, email_html, attach
         quit()
 
     print(f'[+] Sending {len(html)} to {target_email}!')
+    return msg
 
-    try:
-        conn = SMTP(smtp_server, smtp_port)
-    except Exception as e:
-        print('Received an error: ' + e)
+def connect(sender_email, sender_password, target_email):
+    args = get_args()
+    smtp_server = args.smtp_server
+    smtp_port = args.smtp_port
+    if sender_email != None and sender_password != None:
+        try:
+            conn = SMTP(smtp_server, smtp_port)
+            print(f'[+] Connected to {smtp_server}:{smtp_port}!')
+
+            conn.starttls()
+            conn.set_debuglevel(False)
+            conn.login(sender_email, sender_password)
+            print(f'[+] Authenticated as {sender_email}!')
+            return conn
+        except Exception as e:
+            print('Received an error: ' + str(e))
+            quit()
+    else:
+        print('[!] Please Specify Credentials!')
         quit()
 
-    print(f'[+] Connected to {smtp_server}:{smtp_port}!')
-    conn.starttls()
-    conn.set_debuglevel(False)
+def send_message(sender_email, sender_password, target_email, email_html, attachment_file):
+    msg = build_email(sender_email, target_email, email_html, attachment_file)
+
+    conn = connect(sender_email, sender_password, target_email)
 
     try:
-        conn.login(sender_email, sender_password)
         conn.sendmail(sender_email, target_email, msg.as_string())
+        print('[+] Email Succesfully sent!')
     except Exception as e:
-        print('[!] Failed to send:' + e)
-        quit()
+        print('[!] Email Failed: ' + str(e))
     finally:
-        print('[+] Email sent!')
-        conn.quit()
-        return 0
+        conn.close()
 
 def main():
-    try:
-        sender_email = argv[1]
-        sender_password = argv[2]
-        target_email = argv[3]
-        email_html = argv[4]
-        attachment_file = argv[5]
-    except Exception as e:
-        print('Usage: python3 fishy.py <sender_email> <sender_password> <target_email> <email_html> <attachment_file>')
-        quit()
+    args = get_args()
 
-    send_message(sender_email, sender_password, target_email, email_html, attachment_file)
+    send_message(args.sender_address, args.sender_password, args.target_address, args.html_email, args.attachment)
 
 if __name__ == '__main__':
     main()
